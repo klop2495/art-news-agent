@@ -1,0 +1,60 @@
+name: Art News Agent
+
+on:
+  # Запуск по расписанию (каждый день в 9:00 UTC)
+  schedule:
+    - cron: '0 9 * * *'
+  
+  # Ручной запуск через GitHub UI
+  workflow_dispatch:
+    inputs:
+      max_articles:
+        description: 'Max articles per run'
+        required: false
+        default: '10'
+
+jobs:
+  fetch-news:
+    name: Fetch and Process News
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: 📦 Install dependencies
+        run: npm ci
+      
+      - name: 🏗️ Build project
+        run: npm run build
+      
+      - name: 🤖 Run News Agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-4o
+          INGEST_ENDPOINT_URL: ${{ secrets.INGEST_ENDPOINT_URL }}
+          NEWS_INGEST_API_KEY: ${{ secrets.NEWS_INGEST_API_KEY }}
+          DEFAULT_LANGUAGE: en
+          MAX_ARTICLES_PER_RUN: ${{ github.event.inputs.max_articles || '10' }}
+          API_DELAY_MS: 1000
+        run: |
+          echo "🚀 Starting Art News Agent..."
+          npm start
+          echo "✅ Agent run completed"
+      
+      - name: 📊 Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: agent-logs
+          path: |
+            agent.log
+            processed-articles.json
+          retention-days: 7
+
