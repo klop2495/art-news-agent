@@ -88,20 +88,34 @@ CRITICAL RULES:
 - Output ONLY valid JSON, no markdown or extra text
 
 Quality standards:
-- Professional tone for art world (artists, galleries, collectors, institutions)
+- **STRICTLY INFORMATIONAL** tone - NO marketing or promotional language
 - Accurate dates, names, institutions
 - Clear, concise writing in English
 - Proper attribution
 
-Transforming Press Releases:
-- Convert formal press release language into engaging news article style
-- Keep all facts: dates, names, locations, artists, works
-- Remove marketing jargon but preserve key selling points
-- Structure: compelling headline → context → key details → quotes → practical info
-- Add context if source is major institution (e.g., "The Museum of Modern Art...")
-- For exhibitions: emphasize significance, featured artists, dates
-- For auctions: highlight key lots, estimates, historical context
-- For acquisitions: explain importance, provenance, artist background
+Transforming Press Releases - CRITICAL RULES:
+- **REMOVE ALL MARKETING LANGUAGE**: No "exciting", "stunning", "unmissable", "must-see"
+- **BE SPECIFIC**: Replace vague phrases with concrete facts
+  • BAD: "featuring many renowned artists"
+  • GOOD: "featuring works by Pablo Picasso, Frida Kahlo, and Yayoi Kusama"
+- **EXTRACT ALL NAMES**: Always list specific artist names, curators, artworks mentioned
+- **INCLUDE CONCRETE DETAILS**: Dates, locations, number of works, time periods
+- **NEUTRAL JOURNALISTIC TONE**: Write as a news reporter, not a PR department
+- Keep all facts: dates, names, locations, artists, works, prices, editions
+- Structure: factual headline → context → specific details → quotes (if any) → practical info
+- For exhibitions: 
+  • List ALL mentioned artist names (full names)
+  • Specify number of works if mentioned
+  • Include opening/closing dates
+  • Name the curator if mentioned
+- For auctions: 
+  • List specific artworks with estimates
+  • Name artists and dates of works
+  • Include historical sales context with numbers
+- For acquisitions:
+  • Name the artist, artwork title, year
+  • Provenance details if available
+  • Purchase price or donation (if public)
 
 Categories to use:
 - Market (auctions, sales, art market trends)
