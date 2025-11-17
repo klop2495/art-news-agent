@@ -82,6 +82,34 @@ const staticSources: { sourceName: string; url: string }[] = [
     sourceName: 'Whitney Museum',
     url: 'https://whitney.org/exhibitions',
   },
+
+  // 11. Frieze Art Fair
+  // International fair schedule and announcements
+  {
+    sourceName: 'Frieze',
+    url: 'https://www.frieze.com/fairs',
+  },
+
+  // 12. TEFAF
+  // European fine art fair
+  {
+    sourceName: 'TEFAF',
+    url: 'https://www.tefaf.com/fairs',
+  },
+
+  // 13. The Armory Show
+  // New York art fair news and press
+  {
+    sourceName: 'The Armory Show',
+    url: 'https://www.thearmoryshow.com/press',
+  },
+
+  // 14. Art Dubai
+  // Middle East fair announcements
+  {
+    sourceName: 'Art Dubai',
+    url: 'https://www.artdubai.ae/press',
+  },
   
   // ===================================================================
   // 💡 ИНСТРУКЦИЯ: Для лучших результатов
@@ -113,6 +141,10 @@ const DOMAIN_SELECTORS: Record<string, string> = {
   'sfmoma.org': 'article, .exhibition-content, main',
   'artbasel.com': 'article, .story-content, main',
   'whitney.org': 'article, .exhibition-detail, main',
+  'frieze.com': 'article, main, .press-release, .fairs-page',
+  'tefaf.com': 'article, main, .fair-detail',
+  'thearmoryshow.com': 'article, main, .press-release',
+  'artdubai.ae': 'article, main, .press-release',
 };
 
 function makeExternalId(sourceName: string, url: string): string {

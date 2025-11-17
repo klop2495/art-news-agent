@@ -5,6 +5,7 @@ import fs from 'fs';
 import { fetchRawArticles } from './fetchSources.js';
 import { generateNewsPayload } from './gptClient.js';
 import { sendToArtRegistry } from './ingestClient.js';
+import type { IngestNewsPayload } from './types.js';
 
 const PROCESSED_FILE = 'processed-articles.json';
 
@@ -29,6 +30,41 @@ function saveProcessed(processed: Set<string>): void {
   );
 }
 
+function startOfToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function parseDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
+}
+
+function isRelevantArticle(payload: IngestNewsPayload): { relevant: boolean; reason?: string } {
+  const today = startOfToday();
+  const publishDate = parseDate(payload.publish_date);
+  const eventStart = parseDate(payload.event_dates?.start_date ?? null);
+  const eventEnd = parseDate(payload.event_dates?.end_date ?? null);
+
+  const hasUpcomingEvent =
+    (!!eventStart && eventStart >= today) ||
+    (!!eventEnd && eventEnd >= today);
+
+  const isPublishRecent = !publishDate || publishDate >= today;
+
+  if (hasUpcomingEvent || isPublishRecent) {
+    return { relevant: true };
+  }
+
+  return {
+    relevant: false,
+    reason: `Stale content (publish: ${publishDate?.toISOString() ?? 'n/a'}, event start: ${
+      eventStart?.toISOString() ?? 'n/a'
+    })`,
+  };
+}
+
 async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🤖 Art News Agent - Run Started');
@@ -44,6 +80,7 @@ async function main() {
     processed: 0,
     sent: 0,
     errors: 0,
+    stale: 0,
   };
 
   try {
@@ -103,6 +140,13 @@ async function main() {
           console.log('   ℹ️  Generated excerpt from content');
         }
 
+        const relevance = isRelevantArticle(payload);
+        if (!relevance.relevant) {
+          console.log(`   ⚠️  Skipping outdated material: ${relevance.reason}`);
+          stats.stale++;
+          continue;
+        }
+
         // Send to platform
         console.log('   📤 Sending to Art Registry Platform...');
         await sendToArtRegistry(payload);
@@ -136,6 +180,7 @@ async function main() {
   console.log(`   Already Skipped: ${stats.skipped}`);
   console.log(`   Processed:       ${stats.processed}`);
   console.log(`   Successfully Sent: ${stats.sent}`);
+  console.log(`   Stale Skipped:   ${stats.stale}`);
   console.log(`   Errors:          ${stats.errors}`);
   console.log(`${'═'.repeat(60)}\n`);
 

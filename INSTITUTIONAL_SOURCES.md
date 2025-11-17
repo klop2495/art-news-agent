@@ -36,6 +36,9 @@
 |-------------|------|------------|
 | Art Basel | Fair | https://www.artbasel.com/news |
 | Frieze | Fair | https://www.frieze.com/news |
+| TEFAF | Fair | https://www.tefaf.com/press |
+| The Armory Show | Fair | https://www.thearmoryshow.com/press |
+| Art Dubai | Fair | https://www.artdubai.ae/press |
 
 ### 🖼️ MAJOR GALLERIES (2)
 

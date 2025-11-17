@@ -22,10 +22,34 @@ const IngestSchema = z.object({
   subtitle: z.string().optional(),
   excerpt: z.string().optional(),
   content: z.string(),
+  publish_date: z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), {
+      message: 'publish_date must be ISO date or datetime',
+    })
+    .optional(),
   categories: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   meta_title: z.string().optional(),
   meta_description: z.string().optional(),
+  event_dates: z
+    .object({
+      start_date: z
+        .string()
+        .refine((value) => !Number.isNaN(Date.parse(value)), {
+          message: 'start_date must be ISO date or datetime',
+        }),
+      end_date: z
+        .string()
+        .refine((value) => !Number.isNaN(Date.parse(value)), {
+          message: 'end_date must be ISO date or datetime',
+        })
+        .optional(),
+      timezone: z.string().optional(),
+      status: z.enum(['upcoming', 'ongoing', 'past']).optional(),
+      location: z.string().optional(),
+    })
+    .optional(),
   additional_sources: z
     .array(
       z.object({
@@ -103,6 +127,11 @@ Transforming Press Releases - CRITICAL RULES:
 - **NEUTRAL JOURNALISTIC TONE**: Write as a news reporter, not a PR department
 - Keep all facts: dates, names, locations, artists, works, prices, editions
 - Structure: factual headline → context → specific details → quotes (if any) → practical info
+- **DATE GUARDRAILS**:
+  • Extract publish date in ISO format when stated (e.g., press release date, auction date)
+  • Extract event start/end dates where applicable; include timezone/location if present
+  • If the material is clearly outdated (all dates in the past), respond with a JSON object where fact_check.notes explains it is out of date and set event_dates.status="past"
+- Prioritize exhibitions, auctions, fairs, or announcements happening today or upcoming. Ignore retrospectives already closed unless explicitly re-opening.
 - For exhibitions: 
   • List ALL mentioned artist names (full names)
   • Specify number of works if mentioned
@@ -134,6 +163,7 @@ Geographic coverage:
 - Europe (all countries)
 - Middle East (UAE, Saudi Arabia, Israel, etc.)
 - Asia-Pacific (China, Japan, South Korea, Singapore, etc.)
+- Art fairs (Art Basel, Frieze, TEFAF, Armory Show, Art Dubai, etc.) must capture upcoming edition dates and city.
 `;
 
 export async function generateNewsPayload(
@@ -161,6 +191,9 @@ REQUIRED fields:
   • Preserve article structure
   • Minimum 500 characters for content
 - source.name and source.url
+- publish_date: ISO date (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ). Use announcement/press release date or today's date if none is stated.
+- event_dates: include start_date (+ end_date if provided) for exhibitions, fairs, auctions, or programs. Mark status as "upcoming", "ongoing", or "past".
+- If the event already concluded AND there is no new update, set fact_check.notes to "Outdated" and event_dates.status="past".
 
 IMPORTANT: 
 - "content" must contain the FULL article text, not just the excerpt

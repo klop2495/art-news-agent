@@ -20,12 +20,21 @@ export interface IngestNewsPayload {
   subtitle?: string;
   excerpt?: string;  // Optional: will fallback to content start
   content: string;
+  publish_date?: string; // ISO 8601 date or datetime
 
   categories?: string[];
   tags?: string[];
 
   meta_title?: string;
   meta_description?: string;
+
+  event_dates?: {
+    start_date: string;
+    end_date?: string;
+    timezone?: string;
+    status?: 'upcoming' | 'ongoing' | 'past';
+    location?: string;
+  };
 
   additional_sources?: {
     name: string;
