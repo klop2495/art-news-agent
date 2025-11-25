@@ -8,6 +8,7 @@ import { sendToArtRegistry } from './ingestClient.js';
 import type { IngestNewsPayload } from './types.js';
 
 const PROCESSED_FILE = 'processed-articles.json';
+const IGNORED_FILE = 'ignored-articles.json'; // удаленные/не публикуемые навсегда
 
 // Load list of already processed article IDs
 function loadProcessed(): Set<string> {
@@ -28,6 +29,22 @@ function saveProcessed(processed: Set<string>): void {
     PROCESSED_FILE,
     JSON.stringify([...processed], null, 2),
   );
+}
+
+function loadIgnored(): Set<string> {
+  if (!fs.existsSync(IGNORED_FILE)) {
+    return new Set();
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(IGNORED_FILE, 'utf-8'));
+    return new Set(data);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveIgnored(ignored: Set<string>): void {
+  fs.writeFileSync(IGNORED_FILE, JSON.stringify([...ignored], null, 2));
 }
 
 function startOfToday(): Date {
@@ -74,6 +91,7 @@ async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   const processed = loadProcessed();
+  const ignored = loadIgnored();
   const stats = {
     fetched: 0,
     skipped: 0,
@@ -104,7 +122,7 @@ async function main() {
       console.log(`   URL: ${raw.url}`);
 
       // Check if already processed
-      if (processed.has(raw.externalId)) {
+      if (processed.has(raw.externalId) || ignored.has(raw.externalId)) {
         console.log('   ⏭️  Already processed, skipping');
         stats.skipped++;
         continue;
@@ -149,8 +167,14 @@ async function main() {
 
         // Send to platform
         console.log('   📤 Sending to Art Registry Platform...');
-        await sendToArtRegistry(payload);
-        stats.sent++;
+        const ingestResult = await sendToArtRegistry(payload);
+        if (ingestResult?.status === 'duplicate') {
+          console.log('   ℹ️  Already in platform (duplicate/deleted), marking ignored');
+          ignored.add(raw.externalId);
+          saveIgnored(ignored);
+        } else {
+          stats.sent++;
+        }
 
         // Mark as processed
         processed.add(raw.externalId);
@@ -198,4 +222,3 @@ main().catch((err) => {
   console.error('💥 Fatal error:', err);
   process.exit(1);
 });
-

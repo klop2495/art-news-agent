@@ -1,132 +1,49 @@
 // src/fetchSources.ts
 
 import * as cheerio from 'cheerio';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { RawArticle } from './types.js';
 
-// ===================================================================
-// 🎯 ПРОМО-КОНФИГУРАЦИЯ: 10 проверенных источников для тестирования
-// ===================================================================
-// Эти URL-ы ведут на страницы с последними новостями и пресс-релизами
-// GPT будет извлекать контент и форматировать в читаемые статьи
+type SourceType = 'rss' | 'html';
 
-const staticSources: { sourceName: string; url: string }[] = [
-  
-  // === TOP 10 FOR TESTING ===
-  
-  // 1. MoMA - Museum of Modern Art (New York)
-  // Latest exhibitions, acquisitions, programs
-  {
-    sourceName: 'MoMA',
-    url: 'https://www.moma.org/calendar/exhibitions',
-  },
-  
-  // 2. The Met - Metropolitan Museum (New York)
-  // Current exhibitions and press releases
-  {
-    sourceName: 'The Met',
-    url: 'https://www.metmuseum.org/exhibitions',
-  },
-  
-  // 3. Tate Modern (London)
-  // Major exhibitions and news
-  {
-    sourceName: 'Tate',
-    url: 'https://www.tate.org.uk/visit/tate-modern',
-  },
-  
-  // 4. Christie's Auction House
-  // Upcoming auctions and results
-  {
-    sourceName: "Christie's",
-    url: 'https://www.christies.com/calendar',
-  },
-  
-  // 5. Sotheby's Auction House
-  // Auction news and highlights
-  {
-    sourceName: "Sotheby's",
-    url: 'https://www.sothebys.com/en/articles',
-  },
-  
-  // 6. Guggenheim Museum (New York)
-  // Exhibitions and programs
-  {
-    sourceName: 'Guggenheim',
-    url: 'https://www.guggenheim.org/exhibitions',
-  },
-  
-  // 7. Centre Pompidou (Paris)
-  // Major European contemporary art exhibitions
-  {
-    sourceName: 'Centre Pompidou',
-    url: 'https://www.centrepompidou.fr/en/program/agenda',
-  },
-  
-  // 8. SFMOMA (San Francisco)
-  // West Coast contemporary art
-  {
-    sourceName: 'SFMOMA',
-    url: 'https://www.sfmoma.org/exhibitions',
-  },
-  
-  // 9. Art Basel
-  // Global art fair news
-  {
-    sourceName: 'Art Basel',
-    url: 'https://www.artbasel.com/stories',
-  },
-  
-  // 10. Whitney Museum (New York)
-  // American contemporary art
-  {
-    sourceName: 'Whitney Museum',
-    url: 'https://whitney.org/exhibitions',
-  },
+interface SourceEntry {
+  name: string;
+  url: string;
+  type: SourceType;
+  region?: string;
+  language?: string;
+}
 
-  // 11. Frieze Art Fair
-  // International fair schedule and announcements
-  {
-    sourceName: 'Frieze',
-    url: 'https://www.frieze.com/fairs',
-  },
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const sourcesPath = path.resolve(__dirname, '../config/sources.json');
 
-  // 12. TEFAF
-  // European fine art fair
-  {
-    sourceName: 'TEFAF',
-    url: 'https://www.tefaf.com/fairs',
-  },
+function loadSources(): SourceEntry[] {
+  try {
+    const raw = fs.readFileSync(sourcesPath, 'utf-8');
+    const parsed = JSON.parse(raw) as SourceEntry[];
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      console.warn('[fetchSources] ⚠️ sources.json is empty, falling back to default list');
+      return [];
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[fetchSources] ⚠️ Could not read config/sources.json, falling back to default list', err);
+    return [];
+  }
+}
 
-  // 13. The Armory Show
-  // New York art fair news and press
-  {
-    sourceName: 'The Armory Show',
-    url: 'https://www.thearmoryshow.com/press',
-  },
-
-  // 14. Art Dubai
-  // Middle East fair announcements
-  {
-    sourceName: 'Art Dubai',
-    url: 'https://www.artdubai.ae/press',
-  },
-  
-  // ===================================================================
-  // 💡 ИНСТРУКЦИЯ: Для лучших результатов
-  // ===================================================================
-  // Эти URL-ы ведут на разделы "exhibitions" и "news"
-  // Для получения ПОЛНЫХ статей (не списков):
-  // 
-  // 1. Откройте любой из этих сайтов в браузере
-  // 2. Найдите конкретную новость или выставку
-  // 3. Скопируйте полный URL статьи
-  // 4. Замените URL выше на конкретный
-  // 
-  // ПРИМЕР:
-  // Вместо: https://www.moma.org/calendar/exhibitions
-  // Используйте: https://www.moma.org/calendar/exhibitions/5634
-  // ===================================================================
+// Fallback minimal list (if config missing)
+const staticSources: SourceEntry[] = [
+  { name: 'Art Basel', url: 'https://www.artbasel.com/stories', type: 'html' },
+  { name: 'Frieze', url: 'https://www.frieze.com/fairs', type: 'html' },
+  { name: 'Artnet News', url: 'https://news.artnet.com/feed', type: 'rss' },
+  { name: 'The Art Newspaper', url: 'https://www.theartnewspaper.com/rss.xml', type: 'rss' },
 ];
+
+const sources = loadSources().length ? loadSources() : staticSources;
 
 // Domain-specific selectors for better content extraction
 const DOMAIN_SELECTORS: Record<string, string> = {
@@ -145,7 +62,49 @@ const DOMAIN_SELECTORS: Record<string, string> = {
   'tefaf.com': 'article, main, .fair-detail',
   'thearmoryshow.com': 'article, main, .press-release',
   'artdubai.ae': 'article, main, .press-release',
+  'artforum.com': 'article, main, .article-body',
+  'artnet.com': 'article, main, .article-body',
+  'labiennale.org': 'article, main, .press',
+  'documenta.de': 'article, main, .news',
+  'manifesta.org': 'article, main, .press',
+  'sharjahart.org': 'article, main, .news-article',
+  'gwangjubiennale.org': 'article, main, .newsDetail',
+  'lacma.org': 'article, main, .field--name-body',
+  'getty.edu': 'article, main, .body-content',
+  'serpentinegalleries.org': 'article, main, .rich-text',
+  'barbican.org.uk': 'article, main, .b-article',
+  'maxxi.art': 'article, main, .entry-content',
+  'mplus.org.hk': 'article, main, .richtext',
+  'mori.art.museum': 'article, main, .news-list',
+  'ngv.vic.gov.au': 'article, main, .exhibition__content',
+  'powerstationofart.com': 'article, main, .pro_box',
 };
+
+// Event/arts keywords to prefilter RSS items
+const KEYWORDS = [
+  'exhibition',
+  'opens',
+  'opening',
+  'biennial',
+  'biennale',
+  'triennial',
+  'festival',
+  'fair',
+  'art fair',
+  'auction',
+  'sale',
+  'preview',
+  'program',
+  'gallery',
+  'museum',
+  'show',
+  'retrospective',
+  'art week',
+  'artweek',
+  'art month',
+  'vernissage',
+  'art scene',
+];
 
 function makeExternalId(sourceName: string, url: string): string {
   const base = `${sourceName}-${url}`;
@@ -161,8 +120,104 @@ function getSelector(url: string): string {
   }
 }
 
+function matchesKeywords(text?: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+async function fetchRssItems(src: SourceEntry, limit: number): Promise<RawArticle[]> {
+  try {
+    console.log(`\n[fetchSources] 📥 RSS: ${src.name}`);
+    const res = await fetch(src.url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ArtRegistryBot/1.0; +https://artregplatform.com)',
+        Accept: 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
+      },
+    });
+    if (!res.ok) {
+      console.error(`   ❌ RSS HTTP ${res.status} ${res.statusText}`);
+      return [];
+    }
+    const xml = await res.text();
+    const $ = cheerio.load(xml, { xmlMode: true });
+    const items = $('item').toArray().slice(0, limit);
+    const results: RawArticle[] = [];
+
+    for (const item of items) {
+      const el = $(item);
+      const link = el.find('link').first().text().trim();
+      const title = el.find('title').first().text().trim();
+      const description = el.find('description').first().text().trim();
+
+      if (title && !matchesKeywords(`${title} ${description}`)) {
+        // Skip non-event items to reduce GPT noise
+        continue;
+      }
+
+      if (!link) continue;
+
+      const externalId = makeExternalId(src.name, link);
+      results.push({
+        url: link,
+        html: '', // will be filled after fetching the page
+        sourceName: src.name,
+        externalId,
+      });
+    }
+
+    return results;
+  } catch (err: any) {
+    console.error(`   ❌ RSS Error: ${err.message}`);
+    return [];
+  }
+}
+
+async function fetchHtmlPage(url: string, sourceName: string): Promise<RawArticle | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ArtRegistryBot/1.0; +https://artregplatform.com)',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8',
+      },
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.error(`   ❌ HTTP ${res.status} ${res.statusText} for ${url}`);
+      return null;
+    }
+
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    const selector = getSelector(url);
+    const articleHtml = $(selector).html() || html;
+    const externalId = makeExternalId(sourceName, url);
+
+    return {
+      url,
+      html: articleHtml,
+      sourceName,
+      externalId,
+    };
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.error(`   ❌ Timeout (30s) for ${url}`);
+    } else {
+      console.error(`   ❌ Error: ${err.message}`);
+    }
+    return null;
+  }
+}
+
 export async function fetchRawArticles(): Promise<RawArticle[]> {
-  if (staticSources.length === 0) {
+  if (sources.length === 0) {
     console.warn('[fetchSources] ⚠️  No sources configured');
     return [];
   }
@@ -173,58 +228,23 @@ export async function fetchRawArticles(): Promise<RawArticle[]> {
   );
   const results: RawArticle[] = [];
 
-  for (const src of staticSources.slice(0, maxArticles)) {
-    try {
-      console.log(`\n[fetchSources] 📥 Fetching: ${src.sourceName}`);
-      console.log(`   URL: ${src.url}`);
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
-
-      const res = await fetch(src.url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (compatible; ArtRegistryBot/1.0; +https://artregplatform.com)',
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8',
-        },
-      });
-
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        console.error(`   ❌ HTTP ${res.status} ${res.statusText}`);
-        continue;
+  for (const src of sources.slice(0, maxArticles)) {
+    if (src.type === 'rss') {
+      const rssItems = await fetchRssItems(src, maxArticles);
+      for (const item of rssItems) {
+        const page = await fetchHtmlPage(item.url, item.sourceName);
+        if (page) {
+          results.push(page);
+        }
       }
+      continue;
+    }
 
-      const html = await res.text();
-      const $ = cheerio.load(html);
-
-      // Use domain-specific selector
-      const selector = getSelector(src.url);
-      const articleHtml = $(selector).html() || html;
-
-      const externalId = makeExternalId(src.sourceName, src.url);
-
-      results.push({
-        url: src.url,
-        html: articleHtml,
-        sourceName: src.sourceName,
-        externalId,
-      });
-
-      console.log(`   ✅ Fetched successfully (${articleHtml.length} chars)`);
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.error(`   ❌ Timeout (30s) for ${src.url}`);
-      } else {
-        console.error(`   ❌ Error: ${err.message}`);
-      }
+    const page = await fetchHtmlPage(src.url, src.name);
+    if (page) {
+      results.push(page);
     }
   }
 
   return results;
 }
-

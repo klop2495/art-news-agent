@@ -23,7 +23,7 @@ function transformPayload(payload: IngestNewsPayload): any {
 
 export async function sendToArtRegistry(
   payload: IngestNewsPayload,
-): Promise<void> {
+): Promise<{ status: 'sent' | 'duplicate'; code: number; body?: string }> {
   const endpoint = process.env.INGEST_ENDPOINT_URL;
   const apiKey = process.env.NEWS_INGEST_API_KEY;
 
@@ -49,18 +49,28 @@ export async function sendToArtRegistry(
     body: JSON.stringify(platformPayload),
   });
 
+  const text = await res.text();
+
   if (!res.ok) {
-    const text = await res.text();
-    console.error(
-      `   [Ingest] ❌ Failed: ${res.status} ${res.statusText}`,
-    );
+    // Treat duplicates/ignored as handled
+    if (res.status === 409 || res.status === 410) {
+      console.warn(`   [Ingest] Duplicate/ignored (${res.status}), skipping re-send`);
+      return { status: 'duplicate', code: res.status, body: text };
+    }
+
+    console.error(`   [Ingest] ❌ Failed: ${res.status} ${res.statusText}`);
     console.error(`   [Ingest] Response: ${text}`);
     throw new Error(`Ingest failed with status ${res.status}`);
   }
 
-  const json = await res.json();
+  let json: any = {};
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // ignore parse errors
+  }
   console.log(
-    `   [Ingest] ✅ ${json.action} - Article ID: ${json.article?.id ?? 'N/A'}`,
+    `   [Ingest] ✅ ${json.action ?? 'created'} - Article ID: ${json.article?.id ?? 'N/A'}`,
   );
+  return { status: 'sent', code: res.status, body: text };
 }
-
