@@ -106,9 +106,112 @@ const KEYWORDS = [
   'art scene',
 ];
 
+const REQUEST_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; ArtRegistryBot/1.0; +https://artregplatform.com)',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8',
+};
+
+const EXCLUDED_SOURCE_HOSTS = new Set([
+  'facebook.com',
+  'instagram.com',
+  'linkedin.com',
+  'twitter.com',
+  'x.com',
+  't.me',
+  'youtube.com',
+  'youtu.be',
+  'pinterest.com',
+  'tiktok.com',
+]);
+
 function makeExternalId(sourceName: string, url: string): string {
   const base = `${sourceName}-${url}`;
   return Buffer.from(base).toString('base64').replace(/=+$/g, '');
+}
+
+function normalizeHostname(url: string): string {
+  return url.replace(/^www\./, '').toLowerCase();
+}
+
+function normalizeUrl(rawUrl: string, baseUrl: string): string | null {
+  try {
+    const resolved = new URL(rawUrl, baseUrl);
+    if (!['http:', 'https:'].includes(resolved.protocol)) {
+      return null;
+    }
+    return resolved.toString();
+  } catch {
+    return null;
+  }
+}
+
+function deriveSourceName(url: string, fallbackName: string): string {
+  try {
+    const host = normalizeHostname(new URL(url).hostname);
+    return host || fallbackName;
+  } catch {
+    return fallbackName;
+  }
+}
+
+function extractCanonicalUrl($: cheerio.CheerioAPI, baseUrl: string): string | null {
+  const candidates = [
+    $('link[rel="canonical"]').attr('href'),
+    $('meta[property="og:url"]').attr('content'),
+    $('meta[name="twitter:url"]').attr('content'),
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const normalized = normalizeUrl(candidate, baseUrl);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function isExcludedHost(hostname: string): boolean {
+  const normalized = normalizeHostname(hostname);
+  return EXCLUDED_SOURCE_HOSTS.has(normalized);
+}
+
+function findExternalSourceLink(
+  $: cheerio.CheerioAPI,
+  baseUrl: string,
+): string | null {
+  const baseHost = normalizeHostname(new URL(baseUrl).hostname);
+  let root = $('article').first();
+  if (!root.length) {
+    root = $('main').first();
+  }
+  if (!root.length) {
+    root = $('body').first();
+  }
+  const linkCandidates = root.find('a[href]').toArray();
+  const sourceTextPattern = /(source|official|press release|website|official site|full announcement|read more)/i;
+
+  for (const link of linkCandidates) {
+    const el = $(link);
+    const text = (el.text() || '').trim();
+    if (!sourceTextPattern.test(text)) {
+      continue;
+    }
+    const href = el.attr('href');
+    if (!href) continue;
+    const normalized = normalizeUrl(href, baseUrl);
+    if (!normalized) continue;
+
+    const hostname = normalizeHostname(new URL(normalized).hostname);
+    if (hostname === baseHost) continue;
+    if (isExcludedHost(hostname)) continue;
+
+    return normalized;
+  }
+
+  return null;
 }
 
 function getSelector(url: string): string {
@@ -124,6 +227,34 @@ function matchesKeywords(text?: string): boolean {
   if (!text) return false;
   const lower = text.toLowerCase();
   return KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+async function fetchHtmlWithTimeout(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: REQUEST_HEADERS,
+    });
+
+    if (!res.ok) {
+      console.error(`   ❌ HTTP ${res.status} ${res.statusText} for ${url}`);
+      return null;
+    }
+
+    return await res.text();
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.error(`   ❌ Timeout (30s) for ${url}`);
+    } else {
+      console.error(`   ❌ Error: ${err.message}`);
+    }
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchRssItems(src: SourceEntry, limit: number): Promise<RawArticle[]> {
@@ -175,43 +306,51 @@ async function fetchRssItems(src: SourceEntry, limit: number): Promise<RawArticl
 
 async function fetchHtmlPage(url: string, sourceName: string): Promise<RawArticle | null> {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ArtRegistryBot/1.0; +https://artregplatform.com)',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,ru;q=0.8',
-      },
-    });
-
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      console.error(`   ❌ HTTP ${res.status} ${res.statusText} for ${url}`);
+    const html = await fetchHtmlWithTimeout(url);
+    if (!html) {
       return null;
     }
-
-    const html = await res.text();
     const $ = cheerio.load(html);
     const selector = getSelector(url);
     const articleHtml = $(selector).html() || html;
-    const externalId = makeExternalId(sourceName, url);
+
+    const canonicalUrl = extractCanonicalUrl($, url);
+    const externalSourceUrl = findExternalSourceLink($, url);
+    const primaryUrl = externalSourceUrl || canonicalUrl || url;
+
+    let finalUrl = url;
+    let finalHtml = articleHtml;
+    let finalSourceName = sourceName;
+    let discoveryUrl: string | undefined;
+    let discoverySourceName: string | undefined;
+
+    if (primaryUrl && primaryUrl !== url) {
+      discoveryUrl = url;
+      discoverySourceName = sourceName;
+
+      const canonicalHtml = await fetchHtmlWithTimeout(primaryUrl);
+      if (canonicalHtml) {
+        const canonical$ = cheerio.load(canonicalHtml);
+        const canonicalSelector = getSelector(primaryUrl);
+        finalHtml = canonical$(canonicalSelector).html() || canonicalHtml;
+        finalUrl = primaryUrl;
+        finalSourceName = deriveSourceName(primaryUrl, sourceName);
+      }
+    } else if (canonicalUrl && canonicalUrl !== url) {
+      finalUrl = canonicalUrl;
+    }
+
+    const externalId = makeExternalId(finalSourceName, finalUrl);
 
     return {
-      url,
-      html: articleHtml,
-      sourceName,
+      url: finalUrl,
+      html: finalHtml,
+      sourceName: finalSourceName,
       externalId,
+      discoveryUrl,
+      discoverySourceName,
     };
   } catch (err: any) {
-    if (err.name === 'AbortError') {
-      console.error(`   ❌ Timeout (30s) for ${url}`);
-    } else {
-      console.error(`   ❌ Error: ${err.message}`);
-    }
     return null;
   }
 }

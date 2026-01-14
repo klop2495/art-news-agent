@@ -173,12 +173,17 @@ export async function generateNewsPayload(
   const defaultLanguage = process.env.DEFAULT_LANGUAGE ?? 'en';
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o';
 
+  const discoveryLine = rawArticle.discoveryUrl
+    ? `- Discovered via: ${rawArticle.discoverySourceName ?? 'Aggregator'} (${rawArticle.discoveryUrl})\n`
+    : '';
+
   const userPrompt = `
 Extract and transform this article into professional English-language news content.
 
 Context:
 - Source: ${rawArticle.sourceName}
 - URL: ${rawArticle.url}
+${discoveryLine}- Use the primary source URL above as source.url. If discovery URL exists, add it to additional_sources.
 - Target language: ${defaultLanguage}
 - Audience: global art world professionals
 
@@ -242,6 +247,24 @@ Return ONLY a JSON object matching IngestNewsPayload.
         console.warn(`   [GPT] ⚠️  Content too short (${validated.content.length} chars) - might be incomplete`);
       }
 
+      if (rawArticle.url) {
+        validated.source.url = rawArticle.url;
+      }
+
+      if (rawArticle.sourceName) {
+        validated.source.name = rawArticle.sourceName;
+      }
+
+      if (rawArticle.discoveryUrl) {
+        const discoverySource = {
+          name: rawArticle.discoverySourceName ?? rawArticle.discoveryUrl,
+          url: rawArticle.discoveryUrl,
+        };
+        const existing = validated.additional_sources ?? [];
+        const alreadyIncluded = existing.some((item) => item.url === discoverySource.url);
+        validated.additional_sources = alreadyIncluded ? existing : [...existing, discoverySource];
+      }
+
       console.log(`   [GPT] ✓ Validated: "${validated.title.substring(0, 50)}..."`);
       console.log(`   [GPT] Content: ${validated.content?.length || 0} chars, Excerpt: ${validated.excerpt?.length || 0} chars`);
       return validated as IngestNewsPayload;
@@ -278,4 +301,3 @@ Return ONLY a JSON object matching IngestNewsPayload.
 
   return null;
 }
-

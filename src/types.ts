@@ -64,5 +64,6 @@ export interface RawArticle {
   html: string;
   sourceName: string;
   externalId: string;
+  discoveryUrl?: string;
+  discoverySourceName?: string;
 }
-
